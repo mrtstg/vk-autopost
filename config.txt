@@ -1,0 +1,8 @@
+token=token
+rand_delay_min=1
+rand_delay_max=5
+isthirdpython=0
+accountid=314465094
+allowedids=314465094
+check_chat_cmd=kolbasa
+task_limit=5
