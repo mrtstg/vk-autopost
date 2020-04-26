@@ -11,45 +11,69 @@ from threading import Thread
 
 
 class AutoPostThread:
-    def __init__(self, task, index):
-        self.task = task
+    def __init__(self, param_array, index):
+        type = "chat"
+        id = 0
+        if 'user_id' in param_array:
+            type = "user"
+            id = param_array['user_id']
+        else:
+            id = param_array['chat_id']
+        self.timeout = param_array['timeout']
+        self.id = id
+        self.type = type
+        self.delete = param_array['delete']
+        self.text = param_array['text']
         self.alive = True
         self.index = index
-        self.start_thread()
+        self.start_task()
 
-    def start_thread(self):
-        Thread(target=self.recognize_task).start()
+    def start_task(self):
+        Thread(target=self.recognize, args=()).start()
 
-    def recognize_task(self):
-        task = self.task
-        id = task[0:task.find("|")]
-        text = task[task.find("|") + 1: task.find("[")]
-        interval = task[task.find("[") + 1: task.find("]")]
-        add_codes = task[task.find("[") + 1:]
+    def recognize(self):
         while self.alive:
             try:
-                if "c" in add_codes:
-                    send_msg(chat_id=int(id), message=text)
-                elif "u" in add_codes:
-                    send_msg(user_id=int(id), message=text)
+                msg_id = 0
+                if self.type == "chat":
+                    msg_id = vk.messages.send(
+                        random_id=random.randint(-2147483648, 2147483647),
+                        chat_id=self.id,
+                        message=self.text,
+                    )
+                else:
+                    msg_id = vk.messages.send(
+                        random_id=random.randint(-2147483648, 2147483647),
+                        user_id=self.id,
+                        message=self.text,
+                    )
+                time.sleep(int(self.timeout) + random.randint(delay_min, delay_max))
+                if self.delete:
+                    vk.messages.delete(message_ids=msg_id, delete_for_all=True)
             except Exception as e:
                 send_msg(user_id=int(account_id),
                          message="Ошибка при выполнении задачи #" + str(self.index) + ": " + str(e))
-            time.sleep(int(interval) + random.randint(r_del_min, r_del_max))
+
+
+def reboot(is_trd_python):
+    # функция перезагрузки бота
+    # аругмент функции влияет на выбор команды для перезагрузки
+    way = os.path.abspath(__file__)
+    if is_trd_python != "-1":
+        os.system("python " + way)
+    else:
+        os.system("python3 " + way)
 
 
 def console_log(text, sym_amount=50):
-    print(text, end="\n\n")
+    print('[' + get_time() + '] ' + text, end="\n\n")
     print("-" * sym_amount)
 
 
-def reboot(is_third_python):
-    cmd = os.path.abspath(__file__)
-    if is_third_python is not "1":
-        cmd = "python " + cmd
-    else:
-        cmd = "python3 " + cmd
-    os.system(cmd)
+def get_time():
+    # возвращает время формата ДД.ММ.ГГ ЧЧ:ММ:СС (по МСК)
+    # например, 01.01.01 13:37:00
+    return datetime.datetime.strftime(datetime.datetime.now(pytz.timezone('Europe/Moscow')), "%d.%m.%Y %H:%M:%S")
 
 
 def give_words(text, min=1, max=-1):
@@ -72,67 +96,76 @@ def send_msg(peer_id=None, domain=None, user_id=None, chat_id=None, message=None
     )
 
 
-def resolve_task_to_text(tasks_list):
+def resolve_task_to_text(task_list):
     tasks = []
-    for task_str in tasks_list:
-        id = task_str[0:task_str.find("|")]
-        text = task_str[task_str.find("|") + 1:task_str.find("[")]
-        interval = task_str[task_str.find("[") + 1: task_str.find("]")]
-        additional_codes = task_str[task_str.find("[") + 1:]
-        task_text = str(tasks_list.index(task_str) + 1) + ") Отправка сообщения "
-        if "c" in additional_codes:
-            task_text += "в чат #"
-        elif "u" in additional_codes:
-            if id[0] != "-":
-                task_text += "пользователю *id"
+    for task in task_list:
+        task_text = str(task.index) + ") Отправка сообщения "
+        if task.type != "chat":
+            if task.id > 0:
+                task_text += "пользователю *id" + str(task.id)
             else:
-                task_text += "группе *club"
-        task_text += id.replace("-", "")
-        task_text += " с текстом '" + text + "'"
-        task_text += ". Интервал равен " + interval + " секунд"
+                task_text += "группе *club" + str(task.id).replace("-", "")
+        else:
+            task_text += "в чат #" + str(task.id)
+        task_text += " с текстом '" + str(task.text)
+        task_text += ". Интервал равен " + str(task.timeout)
+        task_text += ". Сообщения {} удаляются за собой".format('не' if not task.delete else '')
         tasks.append(task_text)
     return "\n".join(tasks)
 
 
-# Получаем путь к скрипту
-path = os.path.abspath(__file__).replace(r"main.py", "")
-# Считываем параметры
-console_log("Получен путь скрипта: " + path)
-config_lines = open(path + "config.txt", encoding='utf-8').readlines()
-for line in config_lines:
-    config_lines[config_lines.index(line)] = line[line.find("=") + 1:].replace("\n", "")
-# Перечисление базовых переменных
-is_third_python, allowed_ids, code_word, r_del_min, r_del_max, account_id, task_limit = 0, [], "", 0, 0, 0, 0
+# получаем путь к скрипту
+folder_path = os.path.abspath(__file__).replace("main.py", "")
+console_log("Получен путь скрипта: " + folder_path)
+# считываем параметры
+config_lines = [line[line.find("=") + 1:].replace("\n", "") for line in open(folder_path + 'config.txt',
+                encoding='utf-8').readlines()]
+delay_min, delay_max, code_word, is_3_python, allowed_ids, account_id, task_limit, is_accessed = \
+    1, 10, "kolbasa", "0", [0], 0, 10, False
 try:
     console_log("Получаю параметры запуска...")
-    is_third_python = config_lines[3]
+    is_3_python = config_lines[3]
     allowed_ids = [int(num) for num in config_lines[5].split(",")]
     account_id = int(config_lines[4])
-    r_del_min = int(config_lines[1])
-    r_del_max = int(config_lines[2])
+    delay_min = int(config_lines[1])
+    delay_max = int(config_lines[2])
     code_word = config_lines[6]
     task_limit = int(config_lines[7])
     vk_session = vk_api.VkApi(token=config_lines[0])
     longpoll = VkLongPoll(vk_session)
     vk = vk_session.get_api()
 except Exception as e:
-    console_log("Ошибка: " + str(e))
-    reboot(is_third_python)
+    console_log("Ошибка: " + str(e) + ". Перезапуск через 10 секунд.")
+    time.sleep(10)
+    reboot(is_trd_python=is_3_python)
+finally:
+    console_log("Запуск...")
 
 
 def main():
     tasks = []
-    task_file = open(path + "tasks.txt", encoding='utf-8').readlines()
-    if task_file and len(task_file) <= task_limit:
-        for task in task_file:
-            tasks.append(AutoPostThread(task, task_file.index(task) + 1))
-    elif len(task_file) > task_limit:
-        raise Exception("Превышен лимит задач.")
-        exit(0)
+    task_dict = []
+    if open(folder_path + 'tasks.txt', 'r', encoding='utf-8').read() == "":
+        task_dict = []
+    else:
+        task_dict = eval(open(folder_path + 'tasks.txt', 'r', encoding='utf-8').read())
+        if len(task_dict) > task_limit:
+            raise Exception("Превышен лимит задач.")
+        else:
+            for task in task_dict:
+                tasks.append(AutoPostThread(task, task_dict.index(task) + 1))
+    print("Начинаю прием сообщений!")
     while True:
         try:
-            for event in longpoll.listen():
-                global is_third_python, allowed_ids, account_id, r_del_min, r_del_max, code_word
+            for task in tasks:
+                if not task.alive:
+                    tasks.pop(tasks.index(task))
+                    task_dict.pop(tasks.index(task))
+                    if len(task_dict) == 0:
+                        task_dict = []
+                    open(folder_path + 'tasks.txt', 'w', encoding='utf-8').write(str(task_dict))
+            for event in longpoll.check():
+                global is_3_python, allowed_ids, account_id, delay_max, delay_min, code_word
                 if event.type == VkEventType.MESSAGE_NEW and not event.from_group:
                     is_allowed = True
                     if event.user_id not in allowed_ids and event.user_id != account_id:
@@ -145,10 +178,10 @@ def main():
                         words = lower_text.split(" ")
                         peer_id = event.peer_id
                         if command == "задачи":
-                            if not task_file:
+                            if not task_dict:
                                 send_msg(peer_id=peer_id, message="Задач нет.")
                             else:
-                                text = "Действующие задачи: \n" + resolve_task_to_text(task_file)
+                                text = "Действующие задачи: \n" + resolve_task_to_text(tasks)
                                 send_msg(peer_id=peer_id, message=text)
 
                         if command == code_word:
@@ -160,17 +193,20 @@ def main():
                                 if words[2] == "чат" or words[2] == "пользователь":
                                     if len(tasks) < task_limit:
                                         task = give_words(message_text, 5)
-                                        id = int(words[3])
-                                        interval = int(words[4])
-                                        task_code = str(id) + "|" + task + "[" + str(interval) + "]"
-                                        if words[2] == "чат":
-                                            task_code += "c"
+                                        if len(task) < 300:
+                                            id = int(words[3])
+                                            interval = int(words[4])
+                                            post = {"text": task, "timeout": interval, 'delete': False}
+                                            if words[2] == "чат":
+                                                post['chat_id'] = id
+                                            else:
+                                                post['user_id'] = id
+                                            task_dict.append(post)
+                                            open(folder_path + 'tasks.txt', 'w', encoding='utf-8').write(str(task_dict))
+                                            tasks.append(AutoPostThread(post, len(task_dict)))
+                                            send_msg(peer_id=peer_id, message="Задача создана и начата!")
                                         else:
-                                            task_code += "u"
-                                        task_file.append(task_code)
-                                        open('tasks.txt', 'w', encoding='utf-8').write('\n'.join(task_file))
-                                        tasks.append(AutoPostThread(task_code, len(task_file)))
-                                        send_msg(peer_id=peer_id, message="Задача создана и начата!")
+                                            send_msg(peer_id=peer_id, message="Текст должен быть короче 300 символов!")
                                     else:
                                         send_msg(peer_id=peer_id, message="Достигнут лимит задач")
 
@@ -179,11 +215,19 @@ def main():
                                 if words[2].isdigit():
                                     tasks[int(words[2]) - 1].alive = False
                                     tasks.pop(int(words[2]) - 1)
-                                    task_file.pop(int(words[2]) - 1)
+                                    task_dict.pop(int(words[2]) - 1)
                                     for task_index in range(len(tasks)):
                                         tasks[task_index].index = task_index + 1
-                                    open('tasks.txt', 'w', encoding='utf-8').write('\n'.join(task_file))
+                                    open(folder_path + 'tasks.txt', 'w', encoding='utf-8').write(str(task_dict))
                                     send_msg(peer_id=peer_id, message="Задача удалена!")
+
+                            if words[0] == "удалять" and words[1] == "сообщения":
+                                if words[2].isdigit():
+                                    tasks[int(words[2]) - 1].delete = True if not tasks[int(words[2]) - 1].delete else False
+                                    task_dict[int(words[2]) - 1]['delete'] = tasks[int(words[2]) - 1].delete
+                                    send_msg(peer_id=peer_id, message="Режим удаления изменен!")
+                                    open(folder_path + 'tasks.txt', 'w', encoding='utf-8').write(str(task_dict))
+
 
                         if command == "чатайди":
                             if event.from_chat:
@@ -205,8 +249,10 @@ def main():
                                          .replace("group", "группа").replace("application", "приложение").replace(
                                              "vk_app", "приложение ВК") + "\nАйди: " + \
                                                  str(object['object_id']))
+
         except Exception as e:
             console_log("Ошибка: " + str(e))
+
 
 
 if __name__ == "__main__":
