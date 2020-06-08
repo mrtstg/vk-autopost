@@ -148,12 +148,13 @@ def main():
     if open(folder_path + 'tasks.txt', 'r', encoding='utf-8').read() == "":
         task_dict = []
     else:
-        task_dict = eval(open(folder_path + 'tasks.txt', 'r', encoding='utf-8').read())
-        if len(task_dict) > task_limit:
-            raise Exception("Превышен лимит задач.")
-        else:
-            for task in task_dict:
-                tasks.append(AutoPostThread(task, task_dict.index(task) + 1))
+        if open(folder_path + 'tasks.txt', 'r', encoding='utf-8').read()[0] == '[':
+            task_dict = eval(open(folder_path + 'tasks.txt', 'r', encoding='utf-8').read())
+            if len(task_dict) > task_limit:
+                raise Exception("Превышен лимит задач.")
+            else:
+                for task in task_dict:
+                    tasks.append(AutoPostThread(task, task_dict.index(task) + 1))
     print("Начинаю прием сообщений!")
     while True:
         try:
